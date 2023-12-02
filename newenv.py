@@ -12,7 +12,7 @@ import cv2
 import gc
 import threading
 
-# pyautogui.FAILSAFE = False
+pyautogui.FAILSAFE = False
 pyautogui.PAUSE = 0.
 rollouting = False
 lock = threading.Lock()
@@ -30,27 +30,60 @@ class Actions(enum.Enum):
 
 
 class Displacement(Actions):
-    NOTJUMP = 0  # try to not jump
-    JUMP = 1  # try to jump in next 0.37s
+    NOTJUMP = "NOTJUMP"  # try to not jump
+    JUMP = "JUMP"  # try to jump in next 0.37s
     # DASH = 2
 
 
 class Move(Actions):
-    STAY = 0
-    LEFT = 1
-    RIGHT = 2
+    STAY = "STAY"
+    LEFT = "LEFT"
+    RIGHT = "RIGHT"
 
 
 class Attack(Actions):
     # NOTATTACK = 0
-    ATTACK = 1
-    DONWATTACK = 2
+    ATTACK = "ATTACK"
+    DONWATTACK = "DONWATTACK"
+    # UPATTACK = "UPATTACK"
     # SPELL = 2
 
 
-class Is_attack_then_move(Actions):
-    no = 0
-    yes = 1
+def upattack(able_attack):
+    if able_attack:
+        pyautogui.keyDown("w")
+        pyautogui.press("j")
+        pyautogui.keyUp("w")
+
+
+def downattack(able_attack):
+    if able_attack:
+        pyautogui.keyDown("s")
+        pyautogui.press("j")
+        pyautogui.keyUp("s")
+
+
+def attack(able_attack):
+    if able_attack:
+        pyautogui.press("j")
+
+
+def takemove(last_move, this_move):
+    if last_move == this_move:
+        pass
+    if last_move == Move.STAY:
+        if this_move == Move.LEFT:
+            pyautogui.keyDown("a")
+        elif this_move == Move.RIGHT:
+            pyautogui.keyDown("d")
+    elif last_move == Move.LEFT:
+        pyautogui.keyUp("a")
+        if this_move == Move.RIGHT:
+            pyautogui.keyDown("d")
+    elif last_move == Move.RIGHT:
+        pyautogui.keyUp("d")
+        if this_move == Move.LEFT:
+            pyautogui.keyDown("a")
 
 
 class HKEnv(gymnasium.Env):
@@ -58,36 +91,43 @@ class HKEnv(gymnasium.Env):
     render_mode = ""
     reward_range = (-float("inf"), float("inf"))
 
-    DISPLACEMENT_KEYMAP = {1: "K"}
+    DISPLACEMENT_KEYMAP = {1: "k"}
     MOVE_KEYMAP = {1: "a", 2: "d"}
     ATTACK_KEYMAP = {1: "j"}
     DONWATTACK_KEYMAP = {2: "s"}
 
     HP_CKPT = np.array([52, 91, 129, 169, 207, 246, 286, 324, 363], dtype=int)
 
-    def __init__(self, rgb=False, w1=0.6, w2=0.4, w3=-0.0001):
+    def __init__(self, rgb=True, w1=1, w2=1, time_punishment=0.05):
+
         self.w1 = w1  # 被打
         self.w2 = w2  # 击中
-        self.w3 = w3  # ignore
+
+        self.time_punishment = time_punishment
         self.rgb = rgb
         # spec: EnvSpec | None = None #An environment spec that contains the information used to initialize the environment from :meth:`gymnasium.make
-        self.action_space = gymnasium.spaces.MultiDiscrete(
-            [len(Displacement), len(Move), len(Attack), len(Is_attack_then_move)])
+        self.action_space = gymnasium.spaces.Discrete(
+            len(Displacement) * (len(Attack) + 4 * len(Attack)))  # 第二个维度是（不动*攻击上劈下劈）+（左移右移*攻击上劈下劈*先后）
         if self.rgb:
-            self.observation_space = gymnasium.spaces.Box(low=0, high=255, shape=(3, 160, 160), dtype=np.uint8)
+            self.observation_space = gymnasium.spaces.Box(low=0, high=255, shape=(3, 81, 81), dtype=np.uint8)
         else:
-            self.observation_space = gymnasium.spaces.Box(low=0, high=255, shape=(1, 160, 160), dtype=np.uint8)
+            self.observation_space = gymnasium.spaces.Box(low=0, high=255, shape=(1, 81, 81), dtype=np.uint8)
 
         self.monitor = self._find_window()
-
+        self._last_actions = 0
         self._prev_time = None
-        self._last_actions = [0, 0, 0]
-        self._last_5jump = [0, 0, 0, 0, 0]
-
+        self._last_ifjump = 0
+        self._last_move = Move.STAY
         self.prev_enemy_hp = None
+        self.prev_knight_hp = None
         self.gametime = 1  # 用于转换boss时计数
+        self.able_a = 1
 
         # _np_random: np.random.Generator | None = None
+
+    def lives(self):
+        """返回小骑士当前血量，在step之后被调用，即这0.15s动作之后的血量"""
+        return self.prev_knight_hp
 
     def _checkifthinking(self):
 
@@ -108,7 +148,7 @@ class HKEnv(gymnasium.Env):
         print("end")
         pyautogui.press("esc")
 
-    def step(self, actions, no_notattck=True, steptime=0.3):  # [len(Displacement), len(Move), len(Attack)]
+    def step(self, actions, steptime=0.15):  # [len(Displacement), len(Move), len(Attack)]
         try:
             if rollouting:
                 self._checkifthinking()
@@ -117,8 +157,6 @@ class HKEnv(gymnasium.Env):
             warnings.warn("do not find esc")
             self.close()
             return self._observe()[0], 0, True, False, {}
-        if no_notattck:
-            actions[2] += 1  # 取消不攻击
 
         self._take_action(actions)  # it takes time to ensure 0.3s existed before last time taking actions
 
@@ -134,14 +172,12 @@ class HKEnv(gymnasium.Env):
         self._prev_time = time.time()
 
         # busy_sleep(0.006)  # it takes time to see how much the hp changes,then returen rew,done,obs
-        reward, done, obs = self._get_this_result(actions)
-
-        if no_notattck:
-            actions[2] -= 1  # 取消不攻击
+        reward, done, obs, win = self._get_this_result(actions)
+        truncated = win
         if done:
             self.close()
 
-        return obs, reward, done, False, {}
+        return obs, reward, done, truncated, {}
 
     def reset(self, seed=None, options=None, changeboss=False):
         super().reset(seed=seed)
@@ -191,7 +227,7 @@ class HKEnv(gymnasium.Env):
         self.prev_knight_hp, self.prev_enemy_hp = len(self.HP_CKPT), 1.
         self._prev_time = time.time()
         observe = self._observe()[0]
-        return observe, None
+        return observe, {}
 
     def allkeyup(self):
         for keymap in [self.DISPLACEMENT_KEYMAP, self.MOVE_KEYMAP, self.ATTACK_KEYMAP, self.DONWATTACK_KEYMAP]:
@@ -207,114 +243,111 @@ class HKEnv(gymnasium.Env):
 
         self.prev_knight_hp = None
         self.prev_enemy_hp = None
-        self._last_actions = [0, 0, 0]
-        self._last_5jump = [0, 0, 0, 0, 0]
-
+        self._last_ifjump = 0
+        self._last_move = Move.STAY
+        self._last_actions = 0
         self._prev_time = None
         gc.collect()
 
     def _take_action(self, actions):
-        """actions:a list like[1,2,2,1]"""  # jump then move, then attack
+        """self.action_space = gymnasium.spaces.Discrete(
+            len(Displacement) * (len(Attack) + 4 * len(Attack))) # 第二个维度是（不动*攻击上劈下劈）+（左移右移*攻击上劈下劈*先后）
+            以下为 len(Displacement)=2，只有跳和不跳的情形
+            actions是一个数字0,1,2-->0,2,4这个偶数是不跳，1，3奇数是跳"""
+        # 先处理跳跃
 
-        if actions[0] == self._last_actions[0]:  # jump
+        act, ifjump = divmod(actions, 2)
+
+        if ifjump == self._last_ifjump:
             pass
-        else:  # 01 or 10
-            if actions[0] == 1:
-                key = self.DISPLACEMENT_KEYMAP[actions[0]]
-                pyautogui.keyDown(key)
+        elif list(Displacement)[ifjump] == Displacement.NOTJUMP:  # 跳变不跳
+            pyautogui.keyUp("k")
+        else:  # 不跳变跳
+            pyautogui.keyDown("k")
+        self._last_ifjump = ifjump
+
+        # 制作一个表
+        x, y = divmod(act, 4)  # y是余数[0,3]
+        move_then_attack, if_move_right = divmod(y, 2)  # y是余数[0,3] 。if_move_right只有不是“不动”才用到
+
+        if x == len(Attack):  # 不动
+            takemove(self._last_move, Move.STAY)
+            self._last_move = Move.STAY
+            if list(Attack)[y] == Attack.ATTACK:
+                attack(self.able_a)
+            elif list(Attack)[y] == Attack.DONWATTACK:
+                downattack(self.able_a)
+            elif list(Attack)[y] == Attack.UPATTACK:
+                upattack(self.able_a)
+            else:  # 不攻击
+                pass
+        elif x == len(Attack) - 1:  # 攻击与左右移动与顺序
+
+            if move_then_attack:
+                takemove(self._last_move, Move.RIGHT if if_move_right else Move.LEFT)
+                self._last_move = Move.RIGHT if if_move_right else Move.LEFT
+                attack(self.able_a)
+
             else:
-                key = self.DISPLACEMENT_KEYMAP[1]
-                pyautogui.keyUp(key)
-        if actions[3] == 0:  # move_then_attack
-            if actions[1] == self._last_actions[1]:  # move
-                pass
-            elif self._last_actions[1] == 0:  # 01,02
-                key = self.MOVE_KEYMAP[actions[1]]
-                pyautogui.keyDown(key)
-            else:  # 10,12,20,21
-                key = self.MOVE_KEYMAP[self._last_actions[1]]
-                pyautogui.keyUp(key)
-                if actions[1] != 0:  # 12,21
-                    key = self.MOVE_KEYMAP[actions[1]]
-                    pyautogui.keyDown(key)
+                attack(self.able_a)
+                takemove(self._last_move, Move.RIGHT if if_move_right else Move.LEFT)
+                self._last_move = Move.RIGHT if if_move_right else Move.LEFT
 
-            if actions[2] == 1 or actions[2] == 2:  # attack
-                key = self.ATTACK_KEYMAP[1]
-                if actions[2] == 2:
-                    pyautogui.keyDown(self.DONWATTACK_KEYMAP[actions[2]])
-                pyautogui.press(key)
-                pyautogui.keyUp(self.DONWATTACK_KEYMAP[2])
-        else:  # attack_then_move
-            if actions[2] == 1 or actions[2] == 2:  # attack
-                key = self.ATTACK_KEYMAP[1]
-                if actions[2] == 2:
-                    pyautogui.keyDown(self.DONWATTACK_KEYMAP[actions[2]])
-                pyautogui.press(key)
-                pyautogui.keyUp(self.DONWATTACK_KEYMAP[2])
+        elif x == len(Attack) - 2:  # 下劈与左右移动与顺序
+            if move_then_attack:
+                takemove(self._last_move, Move.RIGHT if if_move_right else Move.LEFT)
+                self._last_move = Move.RIGHT if if_move_right else Move.LEFT
+                downattack(self.able_a)
 
-            if actions[1] == self._last_actions[1]:  # move
-                pass
-            elif self._last_actions[1] == 0:  # 01,02
-                key = self.MOVE_KEYMAP[actions[1]]
-                pyautogui.keyDown(key)
-            else:  # 10,12,20,21
-                key = self.MOVE_KEYMAP[self._last_actions[1]]
-                pyautogui.keyUp(key)
-                if actions[1] != 0:  # 12,21
-                    key = self.MOVE_KEYMAP[actions[1]]
-                    pyautogui.keyDown(key)
+            else:
+                downattack(self.able_a)
+                takemove(self._last_move, Move.RIGHT if if_move_right else Move.LEFT)
+                self._last_move = Move.RIGHT if if_move_right else Move.LEFT
 
-        self._last_actions = actions
-        del self._last_5jump[4]
-        self._last_5jump.insert(0, actions[0])
+        elif x == len(Attack) - 3:  # 上劈与左右移动与顺序
+            if move_then_attack:
+                takemove(self._last_move, Move.RIGHT if if_move_right else Move.LEFT)
+                self._last_move = Move.RIGHT if if_move_right else Move.LEFT
+                upattack(self.able_a)
+
+            else:
+                upattack(self.able_a)
+                takemove(self._last_move, Move.RIGHT if if_move_right else Move.LEFT)
+                self._last_move = Move.RIGHT if if_move_right else Move.LEFT
+
+        self.able_a = 1 - self.able_a
 
     def _get_this_result(self, actions):
         obs, knight_hp, enemy_hp = self._observe()  # knight HP ?,  enemy HP:0->1
 
         done, win = self._check_done(knight_hp, enemy_hp)
         reward = self._get_reward(knight_hp, enemy_hp, win)
-        reward += self._searchinmap(actions)
-        reward -= 0.001  # 时间惩罚
-        return reward, done, obs
+        # if actions != self._last_actions:
+        #     reward += 0.3
+        self._last_actions = actions
+        # reward -= self.time_punishment  # 时间惩罚
+        return reward, done, obs, win
 
-    def _searchinmap(self, actions):  # 1221
-
-        REWARDMAP = {
-            0: {0: 0, 1: 0},  # Displacement    NOTJUMP = 0    JUMP = 1
-            1: {0: 0, 1: 0, 2: 0},  # Move    STAY = 0    LEFT = 1    RIGHT = 2
-            2: {0: 0, 1: 0, 2: 0},  # Attack    NOTATTACK = 0    ATTACK = 1    DONWATTACK = 2
-            3: {0: 0, 1: 0}  # Is_attack_then_move
-        }
-
-        reward = 0
-        for i in [0, 1, 2, 3]:
-            reward += REWARDMAP[i][actions[i]]
-
-        return reward
-
-    def _get_reward(self, knight_hp, enemy_hp, win, turnon=False):  # w1=1, w2=1
+    def _get_reward(self, knight_hp, enemy_hp, win):  # w1=1, w2=1
 
         hurt = knight_hp < self.prev_knight_hp
         hit = enemy_hp < self.prev_enemy_hp
-        # if hit:
-        #     # print("hit")
+
+        if hit and self.able_a == 1:  # 击中，说明这回合是出刀，然后able_a经过转换现在应该是0，所以如果现在是1的话是有问题的
+            print("reset able_attack")
+            self.able_a = 0
+
         # print(f"hit:{hit},enemy_hp:{enemy_hp},prev_enemy_hp{self.prev_enemy_hp}")
         self.prev_knight_hp = knight_hp
         self.prev_enemy_hp = enemy_hp
 
-        if hurt and sum(self._last_5jump) < 5 and turnon:
-            # last 5 frames can't be all trying to jump
-            check = self._checkiftryjump()  # return 0.5 -> 1
-        else:
-            check = 1
         reward = (
-                - self.w1 * hurt * check
+                - self.w1 * hurt
                 + self.w2 * hit
             # - 0.05
             # + action_rew
         )
         if win:
-            reward += 0.7
             # reward += knight_hp / 45
             print("win!!!!!")
         # print('reward:', reward)
@@ -351,6 +384,7 @@ class HKEnv(gymnasium.Env):
         checkpoint1 = knight_hp_bar[self.HP_CKPT]
         checkpoint2 = knight_hp_bar[self.HP_CKPT - 1]
         knight_hp = ((checkpoint1 > 200) | (checkpoint2 > 200)).sum()
+
         rgb = not force_gray and self.rgb
         obs = cv2.cvtColor(frame[:672, ...],
                            (cv2.COLOR_BGRA2RGB if rgb
@@ -361,6 +395,7 @@ class HKEnv(gymnasium.Env):
         # obs = np.expand_dims(obs, axis=0)
         # make channel first
         obs = np.rollaxis(obs, -1) if rgb else obs[np.newaxis, ...]
+
         return obs, knight_hp, enemy_hp
 
     def _find_menu(self):
@@ -411,11 +446,6 @@ class HKEnv(gymnasium.Env):
             'height': 692
         }
         return loc
-
-    def _checkiftryjump(self):
-        """return 0.5 -> 1"""
-        check = -sum(self._last_5jump[0:3]) / 6 + 1
-        return check
 
 
 if __name__ == "__main__":

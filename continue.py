@@ -1,23 +1,22 @@
-from gru import env
-from gru import callback
+from model import env
+from model import callback
 from stable_baselines3 import PPO
 
-model = PPO.load(r"stack4_new_models/190k_add__19000_steps.zip",
+model = PPO.load(r"newenv18_actionspace_models/59k_add__36882_steps.zip",
                  env=env,
                  custom_objects=dict(
-                     tensorboard_log=r"logs\gru_new1_nn",
+                     tensorboard_log=r"logs\gru_new18_nn",
 
-                     learning_rate=0.0006,
-                     n_steps=1800,
-                     batch_size=900,
+                     learning_rate=0.0001,
+                     n_steps=4096, batch_size=512,
                      clip_range=0.2,
-                     n_epochs=2,
-                     ent_coef=0.2,
-                     vf_coef=0.5,
-                     normalize_advantage=True
+                     gae_lambda=0.9,
+                     n_epochs=3,
+                     ent_coef=0.0001, vf_coef=0.5,
                  )
                  )
 
+# print(model.policy)
 model = model.learn(total_timesteps=int(
     13333 * 12
     # 10
@@ -29,5 +28,3 @@ model = model.learn(total_timesteps=int(
 )
 
 # model.save(r"D:\HollowKnight_cpu\models\new_nn_7.zip")
-print(model.policy)
-
