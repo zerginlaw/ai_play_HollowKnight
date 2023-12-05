@@ -333,9 +333,9 @@ class HKEnv(gymnasium.Env):
         hurt = knight_hp < self.prev_knight_hp
         hit = enemy_hp < self.prev_enemy_hp
 
-        if hit and self.able_a == 1:  # 击中，说明这回合是出刀，然后able_a经过转换现在应该是0，所以如果现在是1的话是有问题的
-            print("reset able_attack")
-            self.able_a = 0
+        # if hit and self.able_a == 1:  # 击中，说明这回合是出刀，然后able_a经过转换现在应该是0，所以如果现在是1的话是有问题的
+        #     print("reset able_attack")# 经过观察，似乎是显示血条mod的延迟，那就是没法改变的，反而不应该修正
+        #     self.able_a = 0
 
         # print(f"hit:{hit},enemy_hp:{enemy_hp},prev_enemy_hp{self.prev_enemy_hp}")
         self.prev_knight_hp = knight_hp
@@ -360,6 +360,8 @@ class HKEnv(gymnasium.Env):
             win = self.prev_enemy_hp < enemy_hp and not knight_hp > self.prev_knight_hp  # 敌人血量变多 and not 自己血量变多
             lose = knight_hp == 0 or knight_hp > self.prev_knight_hp  # 或者自己血量变多
             done = win or lose
+            if lose:
+                print(f"lose")
             # print(f"win:{win}")
 
         return done, win
