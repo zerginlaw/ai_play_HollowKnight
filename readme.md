@@ -4,6 +4,7 @@ https://github.com/seermer/HollowKnight_RL
 基于这个作者的基础而写的代码，所以如果你想跑这个程序的话，你需要去原作者的代码仓库下载“显示血条mod”，两张定位用的图片，修改游戏分辨率和窗口模式，然后，你也得把空洞骑士打到神居，解锁手办屋
 此外，我的键位是移动ad；上下ws；攻击j；跳跃k；需要快速劈砍护符
 运行model.py开始训练，在callback2里修改定时保存的步数间隔
+在Python3.9可运行
 # 我的改动
 重写了env，其他部分在stablebaseline3的框架下写
 
