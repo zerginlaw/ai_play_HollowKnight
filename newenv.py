@@ -17,12 +17,12 @@ pyautogui.PAUSE = 0.
 rollouting = False
 lock = threading.Lock()
 
+# MIN_DASH_TIME = 0.6
+# BASCK_DASH_TIME = 1.5 # 这是在wiki查到的，增加0.15s
+MIN_DASH_TIME = 0.75
+BASCK_DASH_TIME = 1.65
 
-#
-# def busy_sleep(seconds_to_sleep):
-#     start = time.perf_counter()
-#     while time.perf_counter() < start + seconds_to_sleep:
-#         pass
+INITIAL_ACTION = [0, 0, 0]
 
 
 class Actions(enum.Enum):
@@ -41,12 +41,28 @@ class Move(Actions):
     RIGHT = "RIGHT"
 
 
+class Attack_or_not(Actions):
+    ATTACK = "ATTACK"  # 正常情况隔1帧攻击
+    NOTATTACK = "NOTATTACK"  # 尝试这一帧不攻击
+
+
 class Attack(Actions):
     # NOTATTACK = 0
     ATTACK = "ATTACK"
     DONWATTACK = "DONWATTACK"
     # UPATTACK = "UPATTACK"
     # SPELL = 2
+
+
+class Dash_or_not(Actions):
+    DASH = "DASH"
+    NOTDASH = "NOTDASH"
+
+
+class Dash_state(enum.Enum):
+    NODASH = 0
+    WHITEDASH = 1
+    BLACKDASH = 2
 
 
 def upattack(able_attack):
@@ -98,23 +114,27 @@ class HKEnv(gymnasium.Env):
 
     HP_CKPT = np.array([52, 91, 129, 169, 207, 246, 286, 324, 363], dtype=int)
 
-    def __init__(self, rgb=True, w1=1, w2=1, time_punishment=0.05):
-
+    def __init__(self, rgb=True, w1=1, w2=1.5, time_punishment=0.05, boss="zote"):
+        self.boss = boss
+        self.info = {}
         self.w1 = w1  # 被打
         self.w2 = w2  # 击中
 
         self.time_punishment = time_punishment
         self.rgb = rgb
-        # spec: EnvSpec | None = None #An environment spec that contains the information used to initialize the environment from :meth:`gymnasium.make
-        self.action_space = gymnasium.spaces.Discrete(
-            len(Displacement) * (len(Attack) + 4 * len(Attack)))  # 第二个维度是（不动*攻击上劈下劈）+（左移右移*攻击上劈下劈*先后）
+
+        # original=len(Displacement) * (len(Attack) + 4 * len(Attack)) # 20
+
+        self.action_space = gymnasium.spaces.MultiDiscrete(
+            [len(Displacement) * (len(Attack) + 4 * len(Attack)), len(Dash_or_not), len(Attack_or_not)]
+        )  # 第二个维度是（不动*攻击上劈下劈）+（左移右移*攻击上劈下劈*先后）
         if self.rgb:
             self.observation_space = gymnasium.spaces.Box(low=0, high=255, shape=(3, 81, 81), dtype=np.uint8)
         else:
             self.observation_space = gymnasium.spaces.Box(low=0, high=255, shape=(1, 81, 81), dtype=np.uint8)
 
         self.monitor = self._find_window()
-        self._last_actions = 0
+        self._last_actions = INITIAL_ACTION
         self._prev_time = None
         self._last_ifjump = 0
         self._last_move = Move.STAY
@@ -122,8 +142,9 @@ class HKEnv(gymnasium.Env):
         self.prev_knight_hp = None
         self.gametime = 1  # 用于转换boss时计数
         self.able_a = 1
-
-        # _np_random: np.random.Generator | None = None
+        self.dash_state = Dash_state.BLACKDASH
+        self._last_dash_time = None
+        self._last_black_dash_time = None
 
     def lives(self):
         """返回小骑士当前血量，在step之后被调用，即这0.15s动作之后的血量"""
@@ -149,6 +170,7 @@ class HKEnv(gymnasium.Env):
         pyautogui.press("esc")
 
     def step(self, actions, steptime=0.15):  # [len(Displacement), len(Move), len(Attack)]
+        """info 正常时候是空，9滴血结束时为boss剩余血量，打赢时是“0”"""
         try:
             if rollouting:
                 self._checkifthinking()
@@ -156,28 +178,37 @@ class HKEnv(gymnasium.Env):
         except AssertionError:
             warnings.warn("do not find esc")
             self.close()
-            return self._observe()[0], 0, True, False, {}
+            return self._observe()[0], 0, True, True, {}
+        now = time.time()
+        self._take_action(actions, now)  # it takes time to ensure 0.3s existed before last time taking actions
 
-        self._take_action(actions)  # it takes time to ensure 0.3s existed before last time taking actions
-
-        t = steptime - (time.time() - self._prev_time)  # Attack interval
+        t = steptime - (now - self._prev_time)  # Attack interval
         # print(f"t should be +，remaining:{t}")
         if t > 0:
+            # print("还差",t)
             time.sleep(t)
+
             # busy_sleep(t)
 
         else:
             print(f"delayed:{-t}")
 
-        self._prev_time = time.time()
+        self._prev_time = time.time()  # 经过测试，每一次实际差不多在0.153到0.157s之间波动
 
         # busy_sleep(0.006)  # it takes time to see how much the hp changes,then returen rew,done,obs
-        reward, done, obs, win = self._get_this_result(actions)
+        reward, done, obs, win, enemy_hp, lose = self._get_this_result(actions)
+
+        info = {"boss_health": None}
+        if win:
+            info = {"boss_health": 0}
+        elif lose:
+            info = {"boss_health": enemy_hp}
+        self.info = info
         truncated = win
         if done:
             self.close()
 
-        return obs, reward, done, truncated, {}
+        return obs, reward, done, truncated, info
 
     def reset(self, seed=None, options=None, changeboss=False):
         super().reset(seed=seed)
@@ -222,7 +253,11 @@ class HKEnv(gymnasium.Env):
             else:
                 ready = is_loading
             time.sleep(0.1)
+
         time.sleep(2)
+
+        if self.boss == "zote":
+            time.sleep(6)
 
         self.prev_knight_hp, self.prev_enemy_hp = len(self.HP_CKPT), 1.
         self._prev_time = time.time()
@@ -241,22 +276,36 @@ class HKEnv(gymnasium.Env):
         """
         self.allkeyup()
 
-        self.prev_knight_hp = None
-        self.prev_enemy_hp = None
+        self._last_actions = INITIAL_ACTION
+        self._prev_time = None
         self._last_ifjump = 0
         self._last_move = Move.STAY
-        self._last_actions = 0
-        self._prev_time = None
+        self.prev_knight_hp = None
+        self.prev_enemy_hp = None
+        self.able_a = 1
+        self.dash_state = Dash_state.BLACKDASH
+        self._last_dash_time = None
+        self._last_black_dash_time = None
+
         gc.collect()
 
-    def _take_action(self, actions):
+    def _take_action(self, actions, now):
         """self.action_space = gymnasium.spaces.Discrete(
             len(Displacement) * (len(Attack) + 4 * len(Attack))) # 第二个维度是（不动*攻击上劈下劈）+（左移右移*攻击上劈下劈*先后）
             以下为 len(Displacement)=2，只有跳和不跳的情形
-            actions是一个数字0,1,2-->0,2,4这个偶数是不跳，1，3奇数是跳"""
+            actions是一个数字0,1,2-->0,2,4这个偶数是不跳，1，3奇数是跳
+            actions[2]里面1是不攻击"""
         # 先处理跳跃
-
+        if_not_attack = actions[2]
+        dash = actions[1]  # 冲刺放在最后处理,0,1,2
+        actions = actions[0]
         act, ifjump = divmod(actions, 2)
+
+        if if_not_attack:
+            self.able_a = 0  # 这一帧不攻击的话，下一帧一定能攻击
+        #     print("不攻击")
+        # else:
+        #     print("攻击")
 
         if ifjump == self._last_ifjump:
             pass
@@ -317,21 +366,39 @@ class HKEnv(gymnasium.Env):
 
         self.able_a = 1 - self.able_a
 
+        self.dash(dash, now)
+
+    def dash(self, dash, now):
+        """dash_state是指现在能不能冲刺"""
+        if dash:
+            if self.dash_state == Dash_state.WHITEDASH:
+                self._last_dash_time = now
+                pyautogui.press("l")
+            if self.dash_state == Dash_state.BLACKDASH:
+                self._last_dash_time = now
+                self._last_black_dash_time = now
+                pyautogui.press("l")
+
     def _get_this_result(self, actions):
+
+        self._check_dash_state(actions)  # 修改下一回合的dash_state
+        self._last_actions = actions
+
         obs, knight_hp, enemy_hp = self._observe()  # knight HP ?,  enemy HP:0->1
 
-        done, win = self._check_done(knight_hp, enemy_hp)
-        reward = self._get_reward(knight_hp, enemy_hp, win)
-        # if actions != self._last_actions:
-        #     reward += 0.3
-        self._last_actions = actions
-        # reward -= self.time_punishment  # 时间惩罚
-        return reward, done, obs, win
+        done, win, lose = self._check_done(knight_hp, enemy_hp)
+        reward = self._get_reward(knight_hp, enemy_hp, win, actions)
 
-    def _get_reward(self, knight_hp, enemy_hp, win):  # w1=1, w2=1
+        # reward -= self.time_punishment  # 时间惩罚
+        return reward, done, obs, win, enemy_hp, lose
+
+    def _get_reward(self, knight_hp, enemy_hp, win, actions):  # w1=1, w2=1
 
         hurt = knight_hp < self.prev_knight_hp
         hit = enemy_hp < self.prev_enemy_hp
+        coef = 1
+        if hurt:
+            coef = self.prev_knight_hp - knight_hp
 
         # if hit and self.able_a == 1:  # 击中，说明这回合是出刀，然后able_a经过转换现在应该是0，所以如果现在是1的话是有问题的
         #     print("reset able_attack")# 经过观察，似乎是显示血条mod的延迟，那就是没法改变的，反而不应该修正
@@ -342,11 +409,15 @@ class HKEnv(gymnasium.Env):
         self.prev_enemy_hp = enemy_hp
 
         reward = (
-                - self.w1 * hurt
+                - self.w1 * hurt * coef
                 + self.w2 * hit
             # - 0.05
             # + action_rew
         )
+        if actions[2]:  # 1是这一帧不攻击，0是攻击
+            reward -= 0.3
+        else:
+            reward += 0.3
         if win:
             # reward += knight_hp / 45
             print("win!!!!!")
@@ -356,15 +427,16 @@ class HKEnv(gymnasium.Env):
     def _check_done(self, knight_hp, enemy_hp):
         done = False
         win = False
+        lose = False
         if self.prev_enemy_hp is not None:
             win = self.prev_enemy_hp < enemy_hp and not knight_hp > self.prev_knight_hp  # 敌人血量变多 and not 自己血量变多
             lose = knight_hp == 0 or knight_hp > self.prev_knight_hp  # 或者自己血量变多
             done = win or lose
-            if lose:
-                print(f"lose")
+            # if lose:
+            #     print(f"lose")
             # print(f"win:{win}")
 
-        return done, win
+        return done, win, lose
 
     def _observe(self, force_gray=False):
         """
@@ -448,6 +520,22 @@ class HKEnv(gymnasium.Env):
             'height': 692
         }
         return loc
+
+    def _check_dash_state(self, actions):
+        now_time = self._prev_time
+        if actions[1] == Dash_or_not.DASH and (
+                self.dash_state == Dash_state.BLACKDASH or self.dash_state == Dash_state.WHITEDASH):
+
+            self.dash_state = Dash_state.NODASH  # 是下一回合的状态
+            self._last_dash_time = now_time
+
+        elif self.dash_state == Dash_state.NODASH:
+            if now_time - self._last_dash_time > MIN_DASH_TIME:
+                self.dash_state = Dash_state.WHITEDASH
+
+        elif self.dash_state == Dash_state.WHITEDASH:
+            if now_time - self._last_black_dash_time > BASCK_DASH_TIME:
+                self.dash_state = Dash_state.BLACKDASH
 
 
 if __name__ == "__main__":

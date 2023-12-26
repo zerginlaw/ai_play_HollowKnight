@@ -3,6 +3,7 @@ import time
 import warnings
 
 import newenv
+# import numpy
 # import numpy as np
 import pyautogui
 # import torch
@@ -21,6 +22,7 @@ from newenv import lock
 class CustomCallback(BaseCallback):
     """
     在用ppo更新模型时，暂停游戏
+    lose或者win时记录boss血量
     A custom callback that derives from ``BaseCallback``.
 
     :param verbose: (int) Verbosity level 0: not output 1: info 2: debug
@@ -28,6 +30,7 @@ class CustomCallback(BaseCallback):
 
     def __init__(self, verbose=0):
         super(CustomCallback, self).__init__(verbose)
+        self.last_collecttime = None
         # Those variables will be accessible in the callback
         # (they are defined in the base class)
         # The RL model
@@ -74,7 +77,13 @@ class CustomCallback(BaseCallback):
 
         :return: (bool) If the callback returns False, training is aborted early.
         """
-
+        try:
+            if ("boss_health" in self.model.env.envs[0].unwrapped.info
+                    and self.model.env.envs[0].unwrapped.info["boss_health"] is not None):
+                self.logger.record_mean("boss_health", self.model.env.envs[0].unwrapped.info["boss_health"])
+        except Exception as e:
+            warnings.warn(e)
+        # AttributeError: 'DummyVecEnv' object has no attribute 'info'
         return True
 
     def _on_rollout_end(self) -> None:
@@ -85,6 +94,11 @@ class CustomCallback(BaseCallback):
         with lock:
             newenv.rollouting = True
         env.allkeyup()
+        now = time.time()
+        if self.last_collecttime is not None:
+            collect_time = now - self.last_collecttime
+            print(f"收集时间为{divmod(collect_time, 60)[0]}分{divmod(collect_time, 60)[1]}秒")
+        self.last_collecttime = now
 
         pyautogui.press("esc")
         print("start")
@@ -109,9 +123,9 @@ class CustomCallback(BaseCallback):
 
 callback1 = CustomCallback()
 callback2 = CheckpointCallback(
-    save_path=r'newenv18_actionspace_models',
-    save_freq=4097,
-    name_prefix=r"95k_add_"
+    save_path=r'zote01models',
+    save_freq=8193,
+    name_prefix=r"0k_add_"
 )
 callback = CallbackList([callback1, callback2])
 env = newenv.HKEnv()
@@ -190,7 +204,7 @@ if __name__ == '__main__':
                 print(n_flatten)  # 8112
 
             self.sequential = nn.Sequential(
-                nn.Linear(n_flatten, features_dim - 1),
+                nn.Linear(n_flatten, features_dim - 3),
                 nn.LeakyReLU()
             )
 
@@ -202,6 +216,8 @@ if __name__ == '__main__':
             e = self.cnn5(d)
 
             able_a = obs["able_a"]
+            dash = self.flatten(obs["dash_state"])
+
             result1 = th.cat((
                 self.flatten(b),
                 self.flatten(c),
@@ -209,32 +225,32 @@ if __name__ == '__main__':
                 self.flatten(e),
             ), dim=-1)
 
-            return th.cat((self.sequential(result1), able_a), dim=-1)
+            return th.cat((self.sequential(result1), able_a, dash), dim=-1)
 
 
     policy_kwargs = dict(
         activation_fn=th.nn.LeakyReLU,
         features_extractor_class=CustomCNN,
         features_extractor_kwargs=dict(features_dim=1536),
-        net_arch=dict(pi=[512], vf=[512])# 这里用列表指定网络结构，比如pi=[512,512]
+        net_arch=dict(pi=[512], vf=[512])  # 这里用列表指定网络结构，比如pi=[512,512]
     )
 
     model = PPO("MultiInputPolicy",
                 env=env,
-                policy_kwargs=policy_kwargs, verbose=1, seed=1024,
-                n_steps=1024, batch_size=512,
+                policy_kwargs=policy_kwargs, verbose=1, seed=512,
+                n_steps=16384, batch_size=512,
                 # n_steps=5, batch_size=5,
-                tensorboard_log=r"logs\gru_new18_nn",
-                learning_rate=0.0005, n_epochs=8,
-                gamma=0.95, gae_lambda=0.9,
+                tensorboard_log=r"logs\zote01",
+                learning_rate=0.0006, n_epochs=20,
+                gamma=0.9, gae_lambda=0.85,
                 clip_range=0.2,
-                ent_coef=0.0005, vf_coef=0.5
+                ent_coef=0.5, vf_coef=0.7
                 )
     model = model.learn(total_timesteps=int(
-        13333 * 12
+        16384 * 5
         # 2000
     ),
-        # progress_bar=True,
+        progress_bar=True,
         callback=callback
     )
 
