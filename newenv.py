@@ -30,33 +30,39 @@ class Actions(enum.Enum):
 
 
 class Displacement(Actions):
-    NOTJUMP = "NOTJUMP"  # try to not jump
-    JUMP = "JUMP"  # try to jump in next 0.37s
+    NOTJUMP = 0  # try to not jump
+    JUMP = 1  # try to jump in next 0.37s
     # DASH = 2
 
 
 class Move(Actions):
-    STAY = "STAY"
-    LEFT = "LEFT"
-    RIGHT = "RIGHT"
-
-
-class Attack_or_not(Actions):
-    ATTACK = "ATTACK"  # 正常情况隔1帧攻击
-    NOTATTACK = "NOTATTACK"  # 尝试这一帧不攻击
+    # STAY = "STAY"
+    LEFT = 2
+    RIGHT = 3
 
 
 class Attack(Actions):
     # NOTATTACK = 0
-    ATTACK = "ATTACK"
-    DONWATTACK = "DONWATTACK"
+    ATTACK = 4
+    DONWATTACK = 5
     # UPATTACK = "UPATTACK"
     # SPELL = 2
 
 
 class Dash_or_not(Actions):
-    DASH = "DASH"
-    NOTDASH = "NOTDASH"
+    NOTDASH = 6
+    DASH = 7
+
+
+class Attack_or_not(Actions):
+    ATTACK = 8  # 正常情况隔1帧攻击
+    NOTATTACK = 9  # 尝试这一帧不攻击
+
+
+# class Move_then_attack(Actions):
+#     """加入可以不攻击之后，这个也不是必须的了"""
+#     move_then_attack = "move_then_attack"
+#     attack_then_move = "attack_then_move"
 
 
 class Dash_state(enum.Enum):
@@ -214,6 +220,8 @@ class HKEnv(gymnasium.Env):
     def reset(self, seed=None, options=None, changeboss=False):
         super().reset(seed=seed)
 
+        print("begin reset")
+
         if pyautogui.locateOnScreen(f'locator/esc.png',
                                     region=(653, 216, 510, 346),
                                     confidence=0.8):
@@ -280,7 +288,7 @@ class HKEnv(gymnasium.Env):
         self._last_actions = INITIAL_ACTION
         self._prev_time = None
         self._last_ifjump = 0
-        self._last_move = Move.STAY
+        self._last_move = Move.LEFT
         self.prev_knight_hp = None
         self.prev_enemy_hp = None
         self.able_a = 1
@@ -291,16 +299,16 @@ class HKEnv(gymnasium.Env):
         gc.collect()
 
     def _take_action(self, actions, now):
-        """self.action_space = gymnasium.spaces.Discrete(
-            len(Displacement) * (len(Attack) + 4 * len(Attack))) # 第二个维度是（不动*攻击上劈下劈）+（左移右移*攻击上劈下劈*先后）
-            以下为 len(Displacement)=2，只有跳和不跳的情形
-            actions是一个数字0,1,2-->0,2,4这个偶数是不跳，1，3奇数是跳
-            actions[2]里面1是不攻击"""
+        """见Xmind思维导图
+        if_not_attack=1不攻击
+        dash=1 冲刺
+        """
         # 先处理跳跃
         if_not_attack = actions[2]
+
         dash = actions[1]  # 冲刺放在最后处理,0,1,2
-        actions = actions[0]
-        act, ifjump = divmod(actions, 2)
+        actions = actions[0] #一共12个动作，取证范围为[0,11]
+        if_jump,act = divmod(actions, 4)
 
         if if_not_attack:
             self.able_a = 0  # 这一帧不攻击的话，下一帧一定能攻击
@@ -308,19 +316,28 @@ class HKEnv(gymnasium.Env):
         # else:
         #     print("攻击")
 
+        self._do_jump(if_jump)
+        self._last_ifjump = if_jump
+
+        # 制作一个表
+        if_move_right, if_downattack = divmod(act, 2)  # act是[0,3],共4个
+
+        self._do_attack_and_move( if_move_right,if_downattack)
+
+        self.able_a = 1 - self.able_a
+
+        self.dash(dash, now)
+
+    def _do_jump(self, ifjump):
         if ifjump == self._last_ifjump:
             pass
         elif list(Displacement)[ifjump] == Displacement.NOTJUMP:  # 跳变不跳
             pyautogui.keyUp("k")
         else:  # 不跳变跳
             pyautogui.keyDown("k")
-        self._last_ifjump = ifjump
 
-        # 制作一个表
-        x, y = divmod(act, 4)  # y是余数[0,3]
-        move_then_attack, if_move_right = divmod(y, 2)  # y是余数[0,3] 。if_move_right只有不是“不动”才用到
-
-        if x == len(Attack):  # 不动
+    def _do_attack_and_move(self,  if_move_right,if_downattack):
+        if if_move_right:  # 不动
             takemove(self._last_move, Move.STAY)
             self._last_move = Move.STAY
             if list(Attack)[y] == Attack.ATTACK:
@@ -364,10 +381,6 @@ class HKEnv(gymnasium.Env):
                 upattack(self.able_a)
                 takemove(self._last_move, Move.RIGHT if if_move_right else Move.LEFT)
                 self._last_move = Move.RIGHT if if_move_right else Move.LEFT
-
-        self.able_a = 1 - self.able_a
-
-        self.dash(dash, now)
 
     def dash(self, dash, now):
         """dash_state是指现在能不能冲刺"""
