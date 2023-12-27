@@ -114,7 +114,7 @@ class HKEnv(gymnasium.Env):
 
     HP_CKPT = np.array([52, 91, 129, 169, 207, 246, 286, 324, 363], dtype=int)
 
-    def __init__(self, rgb=True, w1=1, w2=1.5, time_punishment=0.05, boss="zote"):
+    def __init__(self, rgb=True, w1=1, w2=1.7, time_punishment=0.05, boss="zote"):
         self.boss = boss
         self.info = {}
         self.w1 = w1  # 被打
@@ -203,6 +203,7 @@ class HKEnv(gymnasium.Env):
             info = {"boss_health": 0}
         elif lose:
             info = {"boss_health": enemy_hp}
+            print("boss_health", enemy_hp)
         self.info = info
         truncated = win
         if done:
@@ -380,14 +381,15 @@ class HKEnv(gymnasium.Env):
                 pyautogui.press("l")
 
     def _get_this_result(self, actions):
+        reward = 0
+        reward += self._check_dash_state(actions)  # 修改下一回合的dash_state,并返回dash相关reward
 
-        self._check_dash_state(actions)  # 修改下一回合的dash_state
         self._last_actions = actions
 
         obs, knight_hp, enemy_hp = self._observe()  # knight HP ?,  enemy HP:0->1
 
         done, win, lose = self._check_done(knight_hp, enemy_hp)
-        reward = self._get_reward(knight_hp, enemy_hp, win, actions)
+        reward += self._get_reward(knight_hp, enemy_hp, win, actions)
 
         # reward -= self.time_punishment  # 时间惩罚
         return reward, done, obs, win, enemy_hp, lose
@@ -415,9 +417,9 @@ class HKEnv(gymnasium.Env):
             # + action_rew
         )
         if actions[2]:  # 1是这一帧不攻击，0是攻击
-            reward -= 0.3
+            reward -= 0.25
         else:
-            reward += 0.3
+            reward += 0.25
         if win:
             # reward += knight_hp / 45
             print("win!!!!!")
@@ -447,11 +449,11 @@ class HKEnv(gymnasium.Env):
         """
         with MSS() as sct:
             frame = np.asarray(sct.grab(self.monitor), dtype=np.uint8)
-        enemy_hp_bar = frame[-1, 187:826, :]
+        enemy_hp_bar = frame[-1, 187:826, :]  #
         if (np.all(enemy_hp_bar[..., 0] == enemy_hp_bar[..., 1]) and
                 np.all(enemy_hp_bar[..., 1] == enemy_hp_bar[..., 2])):
             # hp bar found
-            enemy_hp = (enemy_hp_bar[..., 0] < 3).sum() / len(enemy_hp_bar)
+            enemy_hp = (enemy_hp_bar[..., 0] < 4).sum() / len(enemy_hp_bar)
         else:
             enemy_hp = 1.
         knight_hp_bar = frame[64, :, 0]
@@ -523,11 +525,14 @@ class HKEnv(gymnasium.Env):
 
     def _check_dash_state(self, actions):
         now_time = self._prev_time
-        if actions[1] == Dash_or_not.DASH and (
-                self.dash_state == Dash_state.BLACKDASH or self.dash_state == Dash_state.WHITEDASH):
-
+        if actions[1] == Dash_or_not.DASH and self.dash_state == Dash_state.BLACKDASH:  # 黑冲
             self.dash_state = Dash_state.NODASH  # 是下一回合的状态
             self._last_dash_time = now_time
+            return 1
+        elif actions[1] == Dash_or_not.DASH and self.dash_state == Dash_state.WHITEDASH:  # 白冲
+            self.dash_state = Dash_state.NODASH  # 是下一回合的状态
+            self._last_dash_time = now_time
+            return -0.4
 
         elif self.dash_state == Dash_state.NODASH:
             if now_time - self._last_dash_time > MIN_DASH_TIME:
@@ -536,6 +541,8 @@ class HKEnv(gymnasium.Env):
         elif self.dash_state == Dash_state.WHITEDASH:
             if now_time - self._last_black_dash_time > BASCK_DASH_TIME:
                 self.dash_state = Dash_state.BLACKDASH
+
+        return 0
 
 
 if __name__ == "__main__":

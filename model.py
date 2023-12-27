@@ -77,10 +77,16 @@ class CustomCallback(BaseCallback):
 
         :return: (bool) If the callback returns False, training is aborted early.
         """
-        try:
-            if ("boss_health" in self.model.env.envs[0].unwrapped.info
-                    and self.model.env.envs[0].unwrapped.info["boss_health"] is not None):
-                self.logger.record_mean("boss_health", self.model.env.envs[0].unwrapped.info["boss_health"])
+        try: # 如果这个是done，这个callback似乎会在reset之后触发
+            # if ("boss_health" in self.model.env.envs[0].unwrapped.info
+            #         and self.model.env.envs[0].unwrapped.info["boss_health"] is not None):
+            #     self.logger.record_mean("boss_health", self.model.env.envs[0].unwrapped.info["boss_health"])
+            #     print(self.model.env.envs[0].unwrapped.info["boss_health"])
+            info = self.locals.get("infos")[0]
+            if info is not None and "boss_health" in info.keys():
+                if info["boss_health"] is not None:
+                    self.logger.record_mean("boss_health", info["boss_health"])
+
         except Exception as e:
             warnings.warn(e)
         # AttributeError: 'DummyVecEnv' object has no attribute 'info'
@@ -124,7 +130,7 @@ class CustomCallback(BaseCallback):
 callback1 = CustomCallback()
 callback2 = CheckpointCallback(
     save_path=r'zote01models',
-    save_freq=8193,
+    save_freq=4097,
     name_prefix=r"0k_add_"
 )
 callback = CallbackList([callback1, callback2])
@@ -247,7 +253,7 @@ if __name__ == '__main__':
                 ent_coef=0.5, vf_coef=0.7
                 )
     model = model.learn(total_timesteps=int(
-        16384 * 5
+        16384 * 5+100
         # 2000
     ),
         progress_bar=True,
