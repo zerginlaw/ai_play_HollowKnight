@@ -3,25 +3,39 @@ import time
 import gymnasium
 import numpy as np
 import pyautogui
-from newenv import Dash_state
+from newenv import DashState
 from newenv import INITIAL_ACTION
+
 
 class CustomDictobs(gymnasium.ObservationWrapper):
     def __init__(self, env):
         super().__init__(env)
         self.observation_space = gymnasium.spaces.Dict(
-            {"obs": gymnasium.spaces.Box(low=0, high=255, shape=(4, 3, 81, 81), dtype=np.uint8),
-             "able_a": gymnasium.spaces.MultiBinary(1), "dash_state": gymnasium.spaces.MultiBinary([1,2])})
+            {
+                "obs": gymnasium.spaces.Box(low=0, high=255, shape=(4, 3, 81, 81), dtype=np.uint8),
+                "able_a": gymnasium.spaces.MultiBinary(1),
+                "dash_state": gymnasium.spaces.MultiBinary([1, 2]),
+                "action_list": gymnasium.spaces.MultiBinary(20)  # 过去四帧的动作
+            })
+
+    def _dash(self):
+        if self.unwrapped.dash_state == DashState.NODASH:
+            dash = np.array([0, 0])
+        elif self.unwrapped.dash_state == DashState.WHITEDASH:
+            dash = np.array([0, 1])
+        elif self.unwrapped.dash_state == DashState.BLACKDASH:
+            dash = np.array([1, 0])
+        return dash
 
     def observation(self, observation):
         """输入是(4,3, 81, 81)"""
-        if self.unwrapped.dash_state==Dash_state.NODASH:
-            dash=np.array([0,0])
-        elif self.unwrapped.dash_state==Dash_state.WHITEDASH:
-            dash = np.array([0,1])
-        elif self.unwrapped.dash_state==Dash_state.BLACKDASH:
-            dash = np.array([1,0])
-        return {"obs": observation, "able_a": np.array(self.unwrapped.able_a),"dash_state":dash}
+        dash = self._dash()
+        action_list = np.array(self.unwrapped.info["action_list"])
+        return {"obs": observation,
+                "able_a": np.array(self.unwrapped.able_a),
+                "dash_state": dash,
+                "action_list": action_list
+                }
 
 
 class EpisodicLifeEnv(gymnasium.Wrapper):
@@ -68,10 +82,11 @@ class EpisodicLifeEnv(gymnasium.Wrapper):
                 pyautogui.press("esc")
                 time.sleep(1)
 
-            self.unwrapped.allkeyup()
+
             self.unwrapped.able_a = 0
 
             obs, _, _, _, _ = self.env.step(INITIAL_ACTION)
             self.lives = self.env.unwrapped.lives()
 
-            return obs, {}
+
+            return obs, self.unwrapped.info

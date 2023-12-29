@@ -70,25 +70,23 @@ class CustomCallback(BaseCallback):
     def _on_step(self) -> bool:
         """
         This method will be called by the model after each call to `env.step()`.
-        这个方法被model call在每次进行env.step()
+        这个方法被model call在每次进行env.step()w
 
         For child callback (of an `EventCallback`), this will be called
         when the event is triggered.
 
         :return: (bool) If the callback returns False, training is aborted early.
         """
-        try: # 如果这个是done，这个callback似乎会在reset之后触发
-            # if ("boss_health" in self.model.env.envs[0].unwrapped.info
-            #         and self.model.env.envs[0].unwrapped.info["boss_health"] is not None):
-            #     self.logger.record_mean("boss_health", self.model.env.envs[0].unwrapped.info["boss_health"])
-            #     print(self.model.env.envs[0].unwrapped.info["boss_health"])
+        try:  # 如果这个是done，这个callback似乎会在reset之后触发
             info = self.locals.get("infos")[0]
             if info is not None and "boss_health" in info.keys():
                 if info["boss_health"] is not None:
+
                     self.logger.record_mean("boss_health", info["boss_health"])
 
         except Exception as e:
             warnings.warn(e)
+
         # AttributeError: 'DummyVecEnv' object has no attribute 'info'
         return True
 
@@ -99,7 +97,7 @@ class CustomCallback(BaseCallback):
         """
         with lock:
             newenv.rollouting = True
-        env.allkeyup()
+        env.allkeyup()  # ?
         now = time.time()
         if self.last_collecttime is not None:
             collect_time = now - self.last_collecttime
@@ -129,7 +127,7 @@ class CustomCallback(BaseCallback):
 
 callback1 = CustomCallback()
 callback2 = CheckpointCallback(
-    save_path=r'zote01models',
+    save_path=r'zote02models',
     save_freq=4097,
     name_prefix=r"0k_add_"
 )
@@ -210,7 +208,7 @@ if __name__ == '__main__':
                 print(n_flatten)  # 8112
 
             self.sequential = nn.Sequential(
-                nn.Linear(n_flatten, features_dim - 3),
+                nn.Linear(n_flatten, features_dim - 3 - 20),
                 nn.LeakyReLU()
             )
 
@@ -223,6 +221,7 @@ if __name__ == '__main__':
 
             able_a = obs["able_a"]
             dash = self.flatten(obs["dash_state"])
+            action_list = self.flatten(obs["action_list"])
 
             result1 = th.cat((
                 self.flatten(b),
@@ -231,7 +230,7 @@ if __name__ == '__main__':
                 self.flatten(e),
             ), dim=-1)
 
-            return th.cat((self.sequential(result1), able_a, dash), dim=-1)
+            return th.cat((self.sequential(result1), able_a, dash, action_list), dim=-1)
 
 
     policy_kwargs = dict(
@@ -244,16 +243,16 @@ if __name__ == '__main__':
     model = PPO("MultiInputPolicy",
                 env=env,
                 policy_kwargs=policy_kwargs, verbose=1, seed=512,
-                n_steps=16384, batch_size=512,
+                n_steps=300, batch_size=300,
                 # n_steps=5, batch_size=5,
-                tensorboard_log=r"logs\zote01",
-                learning_rate=0.0006, n_epochs=20,
+                tensorboard_log=r"logs\zote02",
+                learning_rate=0.0006, n_epochs=1,
                 gamma=0.9, gae_lambda=0.85,
                 clip_range=0.2,
                 ent_coef=0.5, vf_coef=0.7
                 )
     model = model.learn(total_timesteps=int(
-        16384 * 5+100
+        16384 * 5 + 100
         # 2000
     ),
         progress_bar=True,

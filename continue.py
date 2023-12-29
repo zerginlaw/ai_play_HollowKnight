@@ -5,7 +5,7 @@ from stable_baselines3 import PPO
 model = PPO.load(r"zote01models/0k_add__147482_steps.zip",
                  env=env,
                  custom_objects=dict(
-                     tensorboard_log=r"logs\zote01",
+                     tensorboard_log=r"logs\zote02",
 
                      learning_rate=0.0004,
                      n_steps=4096, batch_size=512,
