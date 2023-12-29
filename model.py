@@ -81,13 +81,9 @@ class CustomCallback(BaseCallback):
             info = self.locals.get("infos")[0]
             if info is not None and "boss_health" in info.keys():
                 if info["boss_health"] is not None:
-
                     self.logger.record_mean("boss_health", info["boss_health"])
-
         except Exception as e:
             warnings.warn(e)
-
-        # AttributeError: 'DummyVecEnv' object has no attribute 'info'
         return True
 
     def _on_rollout_end(self) -> None:
@@ -97,7 +93,7 @@ class CustomCallback(BaseCallback):
         """
         with lock:
             newenv.rollouting = True
-        env.allkeyup()  # ?
+        env.allkeyup()
         now = time.time()
         if self.last_collecttime is not None:
             collect_time = now - self.last_collecttime
@@ -114,7 +110,6 @@ class CustomCallback(BaseCallback):
                                             confidence=0.8) is not None
         except AssertionError:
             warnings.warn("do not find esc after 1s")
-
             pyautogui.press("esc")
 
     def _on_training_end(self) -> None:
@@ -243,21 +238,19 @@ if __name__ == '__main__':
     model = PPO("MultiInputPolicy",
                 env=env,
                 policy_kwargs=policy_kwargs, verbose=1, seed=512,
-                n_steps=300, batch_size=300,
+                n_steps=4096, batch_size=512,
                 # n_steps=5, batch_size=5,
                 tensorboard_log=r"logs\zote02",
-                learning_rate=0.0006, n_epochs=1,
-                gamma=0.9, gae_lambda=0.85,
+                learning_rate=0.0006, n_epochs=20,
+                gamma=0.85, gae_lambda=0.85,
                 clip_range=0.2,
-                ent_coef=0.5, vf_coef=0.7
+                ent_coef=0.05, vf_coef=0.7
                 )
     model = model.learn(total_timesteps=int(
-        16384 * 5 + 100
+        4096 * 5 + 100
         # 2000
     ),
         progress_bar=True,
         callback=callback
     )
-
-    # model.save(r"D:\HollowKnight_cpu\gru_new_nn_models\1")
     print(model.policy)

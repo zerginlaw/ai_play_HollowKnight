@@ -339,14 +339,13 @@ class HKEnv(gymnasium.Env):
     def _do_dash(self, dash, now):
         """dash_state是指现在能不能冲刺"""
         if dash:
-            if self.dash_state == DashState.WHITEDASH:
-                pyautogui.press("l")
-                self._last_dash_time = now
             if self.dash_state == DashState.BLACKDASH:
                 pyautogui.press("l")
                 self._last_dash_time = now
                 self._last_black_dash_time = now
-
+            if self.dash_state == DashState.WHITEDASH:
+                pyautogui.press("l")
+                self._last_dash_time = now
     def _get_this_result(self, actions):
 
         # self._last_actions = actions
@@ -485,11 +484,9 @@ class HKEnv(gymnasium.Env):
         now_time = self._prev_time
         if actions[1] and self.dash_state == DashState.BLACKDASH:  # 黑冲
             self.dash_state = DashState.NODASH  # 是下一回合的状态
-            self._last_dash_time = now_time
             return 2
         elif actions[1] and self.dash_state == DashState.WHITEDASH:  # 白冲
             self.dash_state = DashState.NODASH  # 是下一回合的状态
-            self._last_dash_time = now_time
             return -1
 
         elif self.dash_state == DashState.NODASH:
