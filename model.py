@@ -130,7 +130,7 @@ class CustomCallback(BaseCallback):
 callback1 = CustomCallback()
 callback2 = CheckpointCallback(
     save_path=r'zote01models',
-    save_freq=4097,
+    save_freq=2049,
     name_prefix=r"0k_add_"
 )
 callback = CallbackList([callback1, callback2])

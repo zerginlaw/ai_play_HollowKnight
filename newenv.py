@@ -525,14 +525,17 @@ class HKEnv(gymnasium.Env):
 
     def _check_dash_state(self, actions):
         now_time = self._prev_time
-        if actions[1] == Dash_or_not.DASH and self.dash_state == Dash_state.BLACKDASH:  # 黑冲
+        if actions[1] == 1 and self.dash_state == Dash_state.BLACKDASH:  # 黑冲
             self.dash_state = Dash_state.NODASH  # 是下一回合的状态
             self._last_dash_time = now_time
+            # print("BLACKDASH")
             return 1
-        elif actions[1] == Dash_or_not.DASH and self.dash_state == Dash_state.WHITEDASH:  # 白冲
+        elif actions[1] == 1 and self.dash_state == Dash_state.WHITEDASH:  # 白冲
             self.dash_state = Dash_state.NODASH  # 是下一回合的状态
             self._last_dash_time = now_time
-            return -0.4
+            # print("WHITEDASH")
+            return -0.5
+
 
         elif self.dash_state == Dash_state.NODASH:
             if now_time - self._last_dash_time > MIN_DASH_TIME:
@@ -541,6 +544,7 @@ class HKEnv(gymnasium.Env):
         elif self.dash_state == Dash_state.WHITEDASH:
             if now_time - self._last_black_dash_time > BASCK_DASH_TIME:
                 self.dash_state = Dash_state.BLACKDASH
+            return 0.1
 
         return 0
 
