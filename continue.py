@@ -2,18 +2,18 @@ from model import env
 from model import callback
 from stable_baselines3 import PPO
 
-model = PPO.load(r"zote02models/0k_add__22539_steps.zip",
+model = PPO.load(r"zote03models/0k_add__81960_steps_baseline.zip",
                  env=env,
                  custom_objects=dict(
-                     tensorboard_log=r"logs\zote02",
+                     tensorboard_log=r"logs\zote04",
 
-                     learning_rate=3e-4,
-                     n_steps=2048, batch_size=512,
+                     learning_rate=1e-3,
+                     n_steps=1024, batch_size=512,
 
                      clip_range=0.2,
                      gae_lambda=0.9,
-                     n_epochs=4,
-                     ent_coef=0.05, vf_coef=3
+                     n_epochs=2,
+                     ent_coef=0.5, vf_coef=0.1
                  )
                  )
 
@@ -22,7 +22,7 @@ model = model.learn(total_timesteps=int(
     8192 * 5+100
     # 10
 ),
-    reset_num_timesteps=False,
+    reset_num_timesteps=True,
 
     progress_bar=True,
     callback=callback

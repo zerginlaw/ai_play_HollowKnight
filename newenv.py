@@ -91,13 +91,21 @@ def attack(able_attack):
 
 
 class HKEnv(gymnasium.Env):
+    """
+    奖励设置：
+    被打  -0.3    6
+    击中  0.6     12
+    出刀  0.05    1
+    黑冲  0.3     6
+    白冲  -0.3    6
+    """
     metadata = {"render_modes": []}
     render_mode = ""
     reward_range = (-float("inf"), float("inf"))
 
     HP_CKPT = np.array([52, 91, 129, 169, 207, 246, 286, 324, 363], dtype=int)
 
-    def __init__(self, rgb=True, w1=1, w2=1.7, time_punishment=0.05, boss="zote"):
+    def __init__(self, rgb=True, w1=0.3, w2=0.6, time_punishment=0.05, boss="zote"):
         self.boss = boss
         self.info = dict(boss_health=None, action_list=[0] * 20)
         self.w1 = w1  # 被打
@@ -377,9 +385,9 @@ class HKEnv(gymnasium.Env):
                 + self.w2 * hit
         )
         if actions[2]:  # 1是这一帧不攻击，0是攻击
-            reward -= 0.25
+            reward -= 0.05
         else:
-            reward += 0.25
+            reward += 0.05
         if win:
             print("win!!!!!")
         # print('reward:', reward)
@@ -486,10 +494,10 @@ class HKEnv(gymnasium.Env):
         now_time = self._prev_time
         if actions[1] and self.dash_state == DashState.BLACKDASH:  # 黑冲
             self.dash_state = DashState.NODASH  # 是下一回合的状态
-            return 2
+            return 0.3
         elif actions[1] and self.dash_state == DashState.WHITEDASH:  # 白冲
             self.dash_state = DashState.NODASH  # 是下一回合的状态
-            return -1
+            return -0.3
         # 成功冲刺的已经return了，接下来是修正状态
         if self.dash_state == DashState.NODASH:
             if now_time - self._last_dash_time > MIN_DASH_TIME:

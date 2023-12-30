@@ -122,8 +122,8 @@ class CustomCallback(BaseCallback):
 
 callback1 = CustomCallback()
 callback2 = CheckpointCallback(
-    save_path=r'zote02models',
-    save_freq=2049,
+    save_path=r'zote04models',
+    save_freq=1025,
     name_prefix=r"0k_add_"
 )
 callback = CallbackList([callback1, callback2])
@@ -149,34 +149,34 @@ if __name__ == '__main__':
                 # 12,81,81
                 nn.Conv2d(self.n_input_channels, 36, kernel_size=3, stride=3, padding=0),
                 # 36,27,27
-                nn.LeakyReLU(),
+                nn.Mish(),
             )
             self.cnn2 = nn.Sequential(
                 # 36,27,27
                 nn.Conv2d(36, 72, kernel_size=3, stride=2, padding=0),
                 # 72,13,13
-                nn.LeakyReLU(),
+                nn.Mish(),
 
             )
             self.cnn3 = nn.Sequential(
                 # 72,13,13
                 nn.Conv2d(72, 36, kernel_size=3, stride=2, padding=0),
                 # 72,6,6
-                nn.LeakyReLU(),
+                nn.Mish(),
 
             )
             self.cnn4 = nn.Sequential(
                 # 72,6,6
                 nn.Conv2d(36, 36, kernel_size=3, stride=1, padding=0),
                 # 36,4,4
-                nn.LeakyReLU(),
+                nn.Mish(),
 
             )
             self.cnn5 = nn.Sequential(
                 # 36,4,4
                 nn.Conv2d(36, 36, kernel_size=3, stride=1, padding=0),
                 # 18,2,2
-                nn.LeakyReLU(),
+                nn.Mish(),
 
             )
 
@@ -204,7 +204,7 @@ if __name__ == '__main__':
 
             self.sequential = nn.Sequential(
                 nn.Linear(n_flatten, features_dim - 3 - 20),
-                nn.LeakyReLU()
+                nn.Mish()
             )
 
         def forward(self, obs) -> th.Tensor:  # 4,3,160,160
@@ -229,7 +229,7 @@ if __name__ == '__main__':
 
 
     policy_kwargs = dict(
-        activation_fn=th.nn.LeakyReLU,
+        activation_fn=nn.Mish(),
         features_extractor_class=CustomCNN,
         features_extractor_kwargs=dict(features_dim=1536),
         net_arch=dict(pi=[512], vf=[512])  # 这里用列表指定网络结构，比如pi=[512,512]
@@ -238,11 +238,11 @@ if __name__ == '__main__':
     model = PPO("MultiInputPolicy",
                 env=env,
                 policy_kwargs=policy_kwargs, verbose=1, seed=512,
-                n_steps=2048, batch_size=512,
+                n_steps=1024, batch_size=512,
                 # n_steps=5, batch_size=5,
-                tensorboard_log=r"logs\zote02",
-                learning_rate=3e-6, n_epochs=1,
-                gamma=0.85, gae_lambda=0.85,
+                tensorboard_log=r"logs\zote04",
+                learning_rate=3e-6, n_epochs=8,
+                gamma=0.8, gae_lambda=0.85,
                 clip_range=0.2,
                 ent_coef=0.05, vf_coef=100
                 )
@@ -253,4 +253,4 @@ if __name__ == '__main__':
         progress_bar=True,
         callback=callback
     )
-    print(model.policy)
+
