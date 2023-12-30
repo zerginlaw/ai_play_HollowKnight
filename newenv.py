@@ -302,7 +302,8 @@ class HKEnv(gymnasium.Env):
 
         if if_not_attack:
             self.able_a = 0  # 这里会影响攻击和下劈 # 这一帧不攻击的话，下一帧一定能攻击
-        if dash:  # 如果这一帧是冲刺，则跳跃没有意义
+        if dash and not self.dash_state == DashState.NODASH:  # 如果这一帧是冲刺，则跳跃没有意义，但是前提是能够冲刺
+            pyautogui.keyUp("k")  # 不跳跃
             self._do_move(if_move_right)
             self._do_attack(if_downattack)
             self._do_dash(dash, now)
@@ -346,6 +347,7 @@ class HKEnv(gymnasium.Env):
             if self.dash_state == DashState.WHITEDASH:
                 pyautogui.press("l")
                 self._last_dash_time = now
+
     def _get_this_result(self, actions):
 
         # self._last_actions = actions
