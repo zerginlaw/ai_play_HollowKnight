@@ -123,7 +123,7 @@ class CustomCallback(BaseCallback):
 callback1 = CustomCallback()
 callback2 = CheckpointCallback(
     save_path=r'zote02models',
-    save_freq=4097,
+    save_freq=2049,
     name_prefix=r"0k_add_"
 )
 callback = CallbackList([callback1, callback2])
@@ -238,13 +238,13 @@ if __name__ == '__main__':
     model = PPO("MultiInputPolicy",
                 env=env,
                 policy_kwargs=policy_kwargs, verbose=1, seed=512,
-                n_steps=4096, batch_size=512,
+                n_steps=2048, batch_size=512,
                 # n_steps=5, batch_size=5,
                 tensorboard_log=r"logs\zote02",
-                learning_rate=0.0006, n_epochs=20,
+                learning_rate=3e-6, n_epochs=1,
                 gamma=0.85, gae_lambda=0.85,
                 clip_range=0.2,
-                ent_coef=0.05, vf_coef=0.7
+                ent_coef=0.05, vf_coef=100
                 )
     model = model.learn(total_timesteps=int(
         4096 * 5 + 100

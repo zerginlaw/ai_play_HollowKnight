@@ -488,12 +488,12 @@ class HKEnv(gymnasium.Env):
         elif actions[1] and self.dash_state == DashState.WHITEDASH:  # 白冲
             self.dash_state = DashState.NODASH  # 是下一回合的状态
             return -1
-
-        elif self.dash_state == DashState.NODASH:
+        # 成功冲刺的已经return了，接下来是修正状态
+        if self.dash_state == DashState.NODASH:
             if now_time - self._last_dash_time > MIN_DASH_TIME:
                 self.dash_state = DashState.WHITEDASH
 
-        elif self.dash_state == DashState.WHITEDASH:
+        if self.dash_state == DashState.WHITEDASH:
             if now_time - self._last_black_dash_time > BASCK_DASH_TIME:
                 self.dash_state = DashState.BLACKDASH
 
