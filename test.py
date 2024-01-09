@@ -3,7 +3,7 @@ from stable_baselines3 import PPO
 from stable_baselines3.common.evaluation import evaluate_policy
 
 police_to_evaluate = {
-    1: "zote01models/0k_add__98319_steps.zip",# 1 __mean_reward 2.7 std_reward 3.4719511005261072
+    1: "zote06models_爬墙下劈/28k_add__108581_steps.zip",# 1 __mean_reward 2.7 std_reward 3.4719511005261072
     # 2: "newenv18_actionspace_models/201k_add__204825_steps.zip",# 2 __mean_reward 2.688888888888889 std_reward 3.1221233673555653
     # 3: "newenv18_actionspace_models/201k_add__163860_steps.zip",
     # 4: "newenv18_actionspace_models/0k_add__63550_steps.zip",

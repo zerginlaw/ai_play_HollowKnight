@@ -122,8 +122,8 @@ class CustomCallback(BaseCallback):
 
 callback1 = CustomCallback()
 callback2 = CheckpointCallback(
-    save_path=r'zote05models',
-    save_freq=2049,
+    save_path=r'zote08models',
+    save_freq=4097,
     name_prefix=r"0k_add_"
 )
 callback = CallbackList([callback1, callback2])
@@ -232,25 +232,24 @@ if __name__ == '__main__':
         activation_fn=nn.PReLU,
         features_extractor_class=CustomCNN,
         features_extractor_kwargs=dict(features_dim=1536),
-        net_arch=dict(pi=[512], vf=[512])  # 这里用列表指定网络结构，比如pi=[512,512]
+        net_arch=dict(pi=[512, 128], vf=[512, 64])  # 这里用列表指定网络结构，比如pi=[512,512]
     )
 
     model = PPO("MultiInputPolicy",
                 env=env,
                 policy_kwargs=policy_kwargs, verbose=1, seed=512,
-                n_steps=2048, batch_size=512,
-                # n_steps=5, batch_size=5,
-                tensorboard_log=r"logs\zote05",
-                learning_rate=3e-5, n_epochs=4,
-                gamma=0.8, gae_lambda=0.95,
+                n_steps=4096, batch_size=128,
+                # tensorboard_log=r"logs\zote08",
+                learning_rate=7.5e-5, n_epochs=8,
+                gamma=0.85, gae_lambda=0.95,
                 clip_range=0.2,
                 ent_coef=0.01, vf_coef=0.5,
                 # max_grad_norm=0.5
                 )
     model = model.learn(total_timesteps=int(
-        4096 * 5 + 100
+        4096 * 50 + 100
         # 2000
     ),
-        progress_bar=True,
+        progress_bar=False,
         callback=callback
     )

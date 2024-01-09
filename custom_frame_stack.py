@@ -29,10 +29,10 @@ class CustomDictobs(gymnasium.ObservationWrapper):
 
     def observation(self, observation):
         """输入是(4,3, 81, 81)"""
-        dash = self._dash()
+        dash = self._dash().reshape((1, 2))
         action_list = np.array(self.unwrapped.info["action_list"])
         return {"obs": observation,
-                "able_a": np.array(self.unwrapped.able_a),
+                "able_a": np.array(self.unwrapped.able_a).reshape((1, 1)),
                 "dash_state": dash,
                 "action_list": action_list
                 }
@@ -49,7 +49,7 @@ class EpisodicLifeEnv(gymnasium.Wrapper):
 
     def step(self, action):
         obs, reward, done, truncated, info = self.env.step(action)
-        self.was_real_done = done or truncated
+        self.was_real_done = done
         # check current lives, make loss of life terminal,
         # then update lives to handle bonus lives
         lives = self.env.unwrapped.lives()
@@ -58,10 +58,10 @@ class EpisodicLifeEnv(gymnasium.Wrapper):
                 # for Qbert sometimes we stay in lives == 0 condition for a few frames
                 # so it's important to keep lives > 0, so that we only reset once
                 # the environment advertises done.
-                done = True
+                print("lives", lives)
+                truncated = True  #
             self.lives = lives
         # print(lives)
-
         return obs, reward, done, truncated, info
 
     def reset(self, **kwargs):
@@ -70,10 +70,9 @@ class EpisodicLifeEnv(gymnasium.Wrapper):
         and the learner need not know about any of this behind-the-scenes.
         """
         if self.was_real_done:
-            obs = self.env.reset(**kwargs)
-            self.lives = self.env.unwrapped.lives()
-            return obs
-
+            obs, info = self.env.reset(**kwargs)
+            # self.lives = self.env.unwrapped.lives()
+            return obs, info
         else:
             # no-op step to advance from terminal/lost life state
             if pyautogui.locateOnScreen(f'locator/esc.png',
@@ -82,11 +81,6 @@ class EpisodicLifeEnv(gymnasium.Wrapper):
                 pyautogui.press("esc")
                 time.sleep(1)
 
-
-            self.unwrapped.able_a = 0
-
-            obs, _, _, _, _ = self.env.step(INITIAL_ACTION)
-            self.lives = self.env.unwrapped.lives()
-
-
-            return obs, self.unwrapped.info
+            obs, _, _, _, info = self.env.step(INITIAL_ACTION)
+            # self.lives = self.env.unwrapped.lives()
+            return obs, info

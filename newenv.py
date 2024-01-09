@@ -93,11 +93,11 @@ def attack(able_attack):
 class HKEnv(gymnasium.Env):
     """
     奖励设置：
-    被打  -0.3    6
-    击中  0.6     12
-    出刀  0.05    1
-    黑冲  0.3     6
-    白冲  -0.3    6
+    被打  -0.1    6
+    击中  0.5     12
+    出刀  0.01    1
+    黑冲  0.01     6
+    白冲  -0.01    6
     """
     metadata = {"render_modes": []}
     render_mode = ""
@@ -105,7 +105,7 @@ class HKEnv(gymnasium.Env):
 
     HP_CKPT = np.array([52, 91, 129, 169, 207, 246, 286, 324, 363], dtype=int)
 
-    def __init__(self, rgb=True, w1=0.3, w2=0.6, time_punishment=0.05, boss="zote"):
+    def __init__(self, rgb=True, w1=0.1, w2=0.5, time_punishment=0.01, boss="zote"):
         self.boss = boss
         self.info = dict(boss_health=None, action_list=[0] * 20)
         self.w1 = w1  # 被打
@@ -206,6 +206,7 @@ class HKEnv(gymnasium.Env):
 
         self.info["action_list"] += action_list
         self.info["action_list"] = self.info["action_list"][-20:]
+        self.info["able_a"] = self.able_a
 
         if win:
             self.info["boss_health"] = 0
@@ -368,7 +369,7 @@ class HKEnv(gymnasium.Env):
         reward += self._check_dash_state(actions)  # 修改下一回合的dash_state,并返回dash相关reward
         reward += self._get_reward(knight_hp, enemy_hp, win, actions)  # 返回血量相关reward
 
-        # reward -= self.time_punishment  # 时间惩罚
+        reward -= self.time_punishment  # 时间惩罚
         return reward, done, obs, win, enemy_hp, lose
 
     def _get_reward(self, knight_hp, enemy_hp, win, actions):  # w1=1, w2=1
@@ -385,10 +386,11 @@ class HKEnv(gymnasium.Env):
                 + self.w2 * hit
         )
         if actions[2]:  # 1是这一帧不攻击，0是攻击
-            reward -= 0.05
+            reward -= 0.01
         else:
-            reward += 0.05
+            reward += 0.01
         if win:
+            reward += 0.5
             print("win!!!!!")
         # print('reward:', reward)
         return reward
@@ -494,10 +496,10 @@ class HKEnv(gymnasium.Env):
         now_time = self._prev_time
         if actions[1] and self.dash_state == DashState.BLACKDASH:  # 黑冲
             self.dash_state = DashState.NODASH  # 是下一回合的状态
-            return 0.3
+            return 0.01
         elif actions[1] and self.dash_state == DashState.WHITEDASH:  # 白冲
             self.dash_state = DashState.NODASH  # 是下一回合的状态
-            return -0.3
+            return -0.01
         # 成功冲刺的已经return了，接下来是修正状态
         if self.dash_state == DashState.NODASH:
             if now_time - self._last_dash_time > MIN_DASH_TIME:
